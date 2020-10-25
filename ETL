@@ -1,0 +1,70 @@
+import pandas as pd
+import pyodbc 
+import reverse_geocoder as rg
+from datetime import datetime
+import urllib
+
+# https://data.humdata.org/dataset/novel-coronavirus-2019-ncov-cases
+
+link_for_cases='https://data.humdata.org/hxlproxy/api/data-preview.csv?url=https%3A%2F%2Fraw.githubusercontent.com%2FCSSEGISandData%2FCOVID-19%2Fmaster%2Fcsse_covid_19_data%2Fcsse_covid_19_time_series%2Ftime_series_covid19_confirmed_global.csv&filename=time_series_covid19_confirmed_global.csv'
+link_for_deaths='https://data.humdata.org/hxlproxy/api/data-preview.csv?url=https%3A%2F%2Fraw.githubusercontent.com%2FCSSEGISandData%2FCOVID-19%2Fmaster%2Fcsse_covid_19_data%2Fcsse_covid_19_time_series%2Ftime_series_covid19_deaths_global.csv&filename=time_series_covid19_deaths_global.csv'
+link_for_recovery='https://data.humdata.org/hxlproxy/api/data-preview.csv?url=https%3A%2F%2Fraw.githubusercontent.com%2FCSSEGISandData%2FCOVID-19%2Fmaster%2Fcsse_covid_19_data%2Fcsse_covid_19_time_series%2Ftime_series_covid19_recovered_global.csv&filename=time_series_covid19_recovered_global.csv'
+outfilename_cases = path_to_out_file
+outfilename_deaths = path_to_out_file
+outfilename_recovery = path_to_out_file
+
+files_links={link_for_cases:outfilename_cases,link_for_deaths:outfilename_deaths,link_for_recovery:outfilename_recovery}
+for k,v in files_links.items():
+    urllib.request.urlretrieve(k, v)
+
+# ETL for cases
+
+def stacking(df_dataset_new):
+    df_stage=df_dataset_new.set_index(['Province/State', 'Country/Region', 'Lat', 'Long'])
+    df_test1=df_stage.stack()
+    df2=pd.DataFrame(df_test1)
+    df2=df2.reset_index()
+    df2.columns=['State', 'Country', 'Lat', 'Long','Datadate', 'Numberofcases']
+    return df2
+
+df_cases=pd.read_csv(path)
+df_cases=stacking(df_cases)
+df_cases.to_excel(path)
+
+# ETL for deaths
+
+df_death=pd.read_csv(path)
+df_death=stacking(df_death)
+df_death.columns=['State', 'Country', 'Lat', 'Long','Datadate', 'Deaths']
+df_death.to_excel(path)
+
+# ETL for recovery
+
+df_recovery =pd.read_csv(path)
+df_recovery=stacking(df_recovery)
+df_recovery.columns=['State', 'Country', 'Lat', 'Long','Datadate', 'Recoveries']
+df_recovery.to_excel(path)
+
+# merging
+
+def joining_con(df_de):
+    df_de['strlat']=df_de.Lat.astype(str)
+    df_de['strlong']=df_de.Long.astype(str)
+    df_de['strdate']=df_de.Datadate.astype(str)
+    df_de['on']=df_de['strlat'].apply(lambda x: x[:9]) +" "+df_de['strlong'].apply(lambda x: x[:9])+" "+df_de['strdate']
+    df_de=df_de.set_index(['on'])
+    return df_de
+
+df_death = joining_con(df_death)
+df_cases = joining_con(df_cases)
+df_recovery = joining_con(df_recovery)
+
+df_joined=df_death.join(df_cases, lsuffix='death', how='right')
+df_joined = df_joined[['State', 'Country', 'Lat', 'Long','Datadate', 'Deaths', 'Numberofcases']]
+df_joined = df_recovery.join(df_joined, lsuffix = 'recovery', how='right')
+df_joined = df_joined[['State', 'Country', 'Lat', 'Long','Datadate', 'Deaths', 'Numberofcases', 'Recoveries']]
+
+df_joined=df_joined.reset_index()
+df_joined = df_joined[['State', 'Country', 'Lat', 'Long','Datadate', 'Deaths', 'Numberofcases', 'Recoveries']]
+
+df_joined.to_excel(path)
